@@ -1,37 +1,18 @@
-import com.codeborne.selenide.Configuration;
 import data.DataHelper;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import page.LoginPage;
-import org.openqa.selenium.chrome.ChromeOptions;
-import java.util.HashMap;
-import java.util.Map;
+
 import static com.codeborne.selenide.Selenide.open;
 
 class MoneyTransferTest {
 
-
     @BeforeEach
     void setup() {
-//      Выключение опции проверки пароля в Chrome
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--start-maximized");
-        Map<String, Object> prefs = new HashMap<String, Object>();
-        prefs.put("credentials_enable_service", false);
-        prefs.put("password_manager_enabled", false);
-        options.setExperimentalOption("prefs", prefs);
-        Configuration.browserCapabilities = options;
+
+        // Сброс балансов до начальных значений
         open("http://localhost:9999");
-    }
-
-    String cardId1 = "92df3f1c-a033-48e6-8390-206f6b1f56c0";
-    String cardId2 = "0f3f5c2a-249e-4c3d-8287-09f7a039391d";
-
-    String cardFrom1 = "5559 0000 0000 0001";
-    String cardFrom2 = "5559 0000 0000 0002";
-
-    @Test
-    void should() throws InterruptedException {
         var loginPage = new LoginPage();
         var authInfo = DataHelper.getAuthInfo();
         var verificationPage = loginPage.validLogin(authInfo);
@@ -39,14 +20,131 @@ class MoneyTransferTest {
 
         var dashboardPage = verificationPage.validVerify(verificationCode);
 
-//        dashboardPage.getCardBalance(cardId1);
-        dashboardPage.validTransfer(5000, cardFrom2, cardId1);
+        var card1 = DataHelper.getCardInfo1();
+        var card2 = DataHelper.getCardInfo2();
 
-//        Thread.sleep(1000);
+        int actualBalanceCard1 = dashboardPage.getCardBalance(card1);
+        int actualBalanceCard2 = dashboardPage.getCardBalance(card2);
 
-//        int balance = dashboardPage.getCardBalance(card0001);
-//        Assertions.assertEquals(balance, 10_000);
+        if (actualBalanceCard1 < actualBalanceCard2) {
+            var transferPage = dashboardPage.clickButtonBalanceUp(card1);
+            transferPage.validTransfer(actualBalanceCard2 - 10_000, card2);
+        } else if (actualBalanceCard1 > actualBalanceCard2) {
+            var transferPage = dashboardPage.clickButtonBalanceUp(card2);
+            transferPage.validTransfer(actualBalanceCard1 - 10_000, card1);
+        }
 
+        // Открытие страницы
+        open("http://localhost:9999");
     }
 
+    @Test
+    void shouldTransferPositiveSum() {
+
+        // авторизация
+        var loginPage = new LoginPage();
+        var authInfo = DataHelper.getAuthInfo();
+        var verificationPage = loginPage.validLogin(authInfo);
+        var verificationCode = DataHelper.getVerificationCodeFor();
+
+        // получаем страницу с картами
+        var dashboardPage = verificationPage.validVerify(verificationCode);
+
+        // откуда и куда хотим перевести
+        var cardTo = DataHelper.getCardInfo2();
+        var cardFrom = DataHelper.getCardInfo1();
+        int transfer = 10_000;
+
+        // логика для проверки теста
+        int card1Balance = dashboardPage.getCardBalance(cardTo) + transfer;
+        int card2Balance = dashboardPage.getCardBalance(cardFrom) - transfer;
+
+        // получаем страницу перевода
+        var transferPage = dashboardPage.clickButtonBalanceUp(cardTo);
+
+        // проводим перевод
+        transferPage.validTransfer(transfer, cardFrom);
+
+        // проверка теста
+        Assertions.assertEquals(card1Balance, dashboardPage.getCardBalance(cardTo));
+        Assertions.assertEquals(card2Balance, dashboardPage.getCardBalance(cardFrom));
+    }
+
+    @Test
+    void shouldTransferPositiveSumFromAnotherCard() {
+
+        var loginPage = new LoginPage();
+        var authInfo = DataHelper.getAuthInfo();
+        var verificationPage = loginPage.validLogin(authInfo);
+        var verificationCode = DataHelper.getVerificationCodeFor();
+
+        var dashboardPage = verificationPage.validVerify(verificationCode);
+
+        var cardTo = DataHelper.getCardInfo1();
+        var cardFrom = DataHelper.getCardInfo2();
+        int transfer = 10_000;
+
+        int card1Balance = dashboardPage.getCardBalance(cardTo) + transfer;
+        int card2Balance = dashboardPage.getCardBalance(cardFrom) - transfer;
+
+        var transferPage = dashboardPage.clickButtonBalanceUp(cardTo);
+
+        transferPage.validTransfer(transfer, cardFrom);
+
+        Assertions.assertEquals(card1Balance, dashboardPage.getCardBalance(cardTo));
+        Assertions.assertEquals(card2Balance, dashboardPage.getCardBalance(cardFrom));
+    }
+
+    @Test
+    void shouldNotTransferNegativeSum() {
+
+        var loginPage = new LoginPage();
+        var authInfo = DataHelper.getAuthInfo();
+        var verificationPage = loginPage.validLogin(authInfo);
+        var verificationCode = DataHelper.getVerificationCodeFor();
+
+        var dashboardPage = verificationPage.validVerify(verificationCode);
+
+        var cardTo = DataHelper.getCardInfo1();
+        var cardFrom = DataHelper.getCardInfo2();
+
+        int transfer = dashboardPage.getCardBalance(cardFrom) + 5_000;
+
+        var transferPage = dashboardPage.clickButtonBalanceUp(cardTo);
+        transferPage.validTransfer(transfer, cardFrom);
+
+        transferPage.getError();
+    }
+
+    @Test
+    void shouldClickToCancelFromTransferPage() {
+
+        var loginPage = new LoginPage();
+        var authInfo = DataHelper.getAuthInfo();
+        var verificationPage = loginPage.validLogin(authInfo);
+        var verificationCode = DataHelper.getVerificationCodeFor();
+
+        var dashboardPage = verificationPage.validVerify(verificationCode);
+        var card = DataHelper.getCardInfo1();
+        int expect = dashboardPage.getCardBalance(card);
+        var transferPage = dashboardPage.clickButtonBalanceUp(card);
+        transferPage.clickActionCancel();
+        dashboardPage.clickActionReload();
+        Assertions.assertEquals(expect, dashboardPage.getCardBalance(card));
+    }
+
+    @Test
+    void shouldErrorOnTransferPage() {
+
+        var loginPage = new LoginPage();
+        var authInfo = DataHelper.getAuthInfo();
+        var verificationPage = loginPage.validLogin(authInfo);
+        var verificationCode = DataHelper.getVerificationCodeFor();
+
+        var dashboardPage = verificationPage.validVerify(verificationCode);
+        var card = DataHelper.getCardInfo1();
+        var transferPage = dashboardPage.clickButtonBalanceUp(card);
+        transferPage.clickSubmitButton();
+        transferPage.getError();
+    }
 }
